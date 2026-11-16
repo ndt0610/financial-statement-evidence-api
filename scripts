@@ -1,0 +1,275 @@
+"""Measure the fixed synthetic holdout against flat-text and evidence pipelines."""
+
+from __future__ import annotations
+
+import json
+import hashlib
+import platform
+import random
+import sys
+from collections import Counter
+from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
+from pathlib import Path
+from statistics import median
+from time import perf_counter_ns
+
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+import fastapi  # noqa: E402
+import openpyxl  # noqa: E402
+import pydantic  # noqa: E402
+
+from app.adapters import ingest_excel  # noqa: E402
+from app.services.qa_service import DocumentIndex, answer_question  # noqa: E402
+from benchmarks.baseline_rag import FlatTextBaseline  # noqa: E402
+
+
+HOLDOUT = ROOT / "benchmarks" / "holdout_v1"
+RESULTS_JSON = ROOT / "benchmarks" / "results_v1.json"
+RESULTS_MD = ROOT / "benchmarks" / "results_v1.md"
+SEED = 20261110
+REPEATS = 3
+WARMUPS_PER_FILE = 3
+
+
+def _percent(numerator: int, denominator: int) -> float:
+    return round(numerator / denominator * 100, 2) if denominator else 0.0
+
+
+def _percentile(samples: list[float], percentage: float) -> float:
+    values = sorted(samples)
+    if not values:
+        return 0.0
+    rank = (len(values) - 1) * percentage
+    lower = int(rank)
+    upper = min(lower + 1, len(values) - 1)
+    return round(values[lower] + (values[upper] - values[lower]) * (rank - lower), 3)
+
+
+def _decimal_equal(actual: object, expected: object) -> bool:
+    if actual is None or expected is None:
+        return actual is expected
+    try:
+        return Decimal(str(actual)) == Decimal(str(expected))
+    except (InvalidOperation, ValueError):
+        return False
+
+
+def _cells(items: list[dict]) -> list[tuple[str, str]]:
+    result = []
+    for item in items:
+        locator = item.get("locator", item)
+        if "sheet_name" in locator and "cell_range" in locator:
+            result.append((locator["sheet_name"], locator["cell_range"]))
+    return result
+
+
+def _failures(expected: dict, predicted: dict) -> list[str]:
+    reasons = []
+    if predicted["status"] != expected["status"]:
+        reasons.append("answer/refusal status")
+    if predicted.get("verification_status") != expected["verification_status"]:
+        reasons.append("verification status")
+    if expected["status"] == "ANSWERED":
+        if not _decimal_equal(predicted.get("value"), expected["value"]) or predicted.get("unit") != expected["unit"]:
+            reasons.append("number or unit")
+    elif predicted.get("value") is not None:
+        reasons.append("number fabricated on refusal")
+    actual_period = predicted.get("period") or {}
+    if any(actual_period.get(key) != value for key, value in expected["period"].items()):
+        reasons.append("period")
+    if predicted.get("report_scope") != expected["report_scope"]:
+        reasons.append("report scope")
+    gold_cells = set(_cells(expected["evidences"]))
+    cited_cells = set(_cells(predicted.get("evidences") or []))
+    if not gold_cells <= cited_cells:
+        reasons.append("evidence cells")
+    if "note_excerpt" in expected and expected["note_excerpt"] not in predicted.get("answer", ""):
+        reasons.append("note excerpt")
+    if "metric" in expected and predicted["status"] == "ANSWERED":
+        calculation = predicted.get("calculation") or ""
+        if not calculation or ("basis" in expected and expected["basis"] not in calculation):
+            reasons.append("calculation basis")
+    expected_findings = set(expected.get("finding_codes", []))
+    actual_findings = {item.get("code") for item in predicted.get("findings") or []}
+    if not expected_findings <= actual_findings:
+        reasons.append("reconciliation finding")
+    return reasons
+
+
+def _score(questions: list[dict], predictions: dict[str, dict], timings: list[float]) -> dict:
+    answerable = [item for item in questions if item["expected"]["status"] == "ANSWERED"]
+    traps = [item for item in questions if item["expected"]["status"] != "ANSWERED"]
+    numeric_correct = sum(
+        predictions[item["id"]]["status"] == "ANSWERED"
+        and _decimal_equal(predictions[item["id"]].get("value"), item["expected"]["value"])
+        and predictions[item["id"]].get("unit") == item["expected"]["unit"]
+        for item in answerable
+    )
+    expected_cells = sum(len(item["expected"]["evidences"]) for item in answerable)
+    hit_cells = sum(
+        len(set(_cells(item["expected"]["evidences"])) & set(_cells(predictions[item["id"]].get("evidences") or [])))
+        if predictions[item["id"]]["status"] == "ANSWERED" else 0
+        for item in answerable
+    )
+    predicted_refusals = [item for item in questions if predictions[item["id"]]["status"].startswith("REFUSED")]
+    correct_traps = sum(
+        predictions[item["id"]]["status"] == item["expected"]["status"]
+        and predictions[item["id"]].get("verification_status") == item["expected"]["verification_status"]
+        and predictions[item["id"]].get("value") is None
+        for item in traps
+    )
+    contract_correct = sum(not _failures(item["expected"], predictions[item["id"]]) for item in questions)
+    return {
+        "numeric_exact_match_percent": _percent(numeric_correct, len(answerable)),
+        "numeric_correct": numeric_correct, "answerable_count": len(answerable),
+        "evidence_cell_hit_rate_percent": _percent(hit_cells, expected_cells),
+        "evidence_cells_hit": hit_cells, "evidence_cells_expected": expected_cells,
+        "refusal_trap_precision_percent": _percent(correct_traps, len(predicted_refusals)),
+        "correct_traps": correct_traps, "predicted_refusals": len(predicted_refusals),
+        "trap_detection_rate_percent": _percent(correct_traps, len(traps)),
+        "trap_count": len(traps),
+        "full_contract_accuracy_percent": _percent(contract_correct, len(questions)),
+        "full_contract_correct": contract_correct,
+        "latency_p50_ms": round(median(timings), 3),
+        "latency_p95_ms": _percentile(timings, 0.95),
+        "latency_samples": len(timings),
+    }
+
+
+def _markdown(report: dict) -> str:
+    baseline, custom = report["metrics"]["flat_text_baseline"], report["metrics"]["evidence_api_core"]
+    rows = [
+        ("Numeric Exact Match (number + unit)", "numeric_exact_match_percent", "%"),
+        ("Evidence Cell Hit Rate", "evidence_cell_hit_rate_percent", "%"),
+        ("Refusal & Trap Precision", "refusal_trap_precision_percent", "%"),
+        ("Trap detection rate (supplementary)", "trap_detection_rate_percent", "%"),
+        ("Full contract accuracy (supplementary)", "full_contract_accuracy_percent", "%"),
+        ("Latency p50", "latency_p50_ms", " ms"),
+        ("Latency p95", "latency_p95_ms", " ms"),
+    ]
+    lines = [
+        "# Holdout v1 — synthetic benchmark",
+        "",
+        f"{report['question_count']} questions across 3 invented FY2025 TT200 workbooks. Query timing excludes ingestion; 3 warmups per file and 3 timed passes per question.",
+        "Flat-text baseline is a lexical top-3 surrogate, not the original Docling/Ollama tutorial. No LLM, embedding, GPU or external service is used by either timed path.",
+        "",
+        "| Metric | Flat-text baseline | Evidence API core |",
+        "|---|---:|---:|",
+    ]
+    for label, key, suffix in rows:
+        lines.append(f"| {label} | {baseline[key]}{suffix} | {custom[key]}{suffix} |")
+    lines.extend(["", "## Evidence API failure cases", ""])
+    if not report["failure_cases"]:
+        lines.append("None on this synthetic set.")
+    else:
+        lines.extend(f"- **{item['id']}** ({item['file_id']}, {item['group']}): {', '.join(item['reasons'])}. {item['question']}" for item in report["failure_cases"])
+    lines.extend(["", "This is a known regression set after fixes to its observed errors, not a fresh blind holdout. Synthetic results do not estimate accuracy on real filings or support a CV performance claim.", ""])
+    return "\n".join(lines)
+
+
+def run_benchmark() -> dict:
+    manifest = json.loads((HOLDOUT / "manifest.json").read_text(encoding="utf-8"))
+    gold = json.loads((HOLDOUT / "gold.json").read_text(encoding="utf-8"))
+    questions = gold["questions"]
+    if len(questions) != 60 or len(manifest["files"]) != 3:
+        raise ValueError("holdout_v1 must contain three files and 60 labels")
+    custom: dict[str, DocumentIndex] = {}
+    baseline: dict[str, FlatTextBaseline] = {}
+    for entry in manifest["files"]:
+        path = HOLDOUT / entry["path"]
+        if hashlib.sha256(path.read_bytes()).hexdigest() != entry["sha256"]:
+            raise ValueError(f"holdout hash changed: {entry['path']}")
+        custom[entry["id"]] = DocumentIndex.from_ingestion(ingest_excel(
+            path, accounting_regime=entry["accounting_regime"], data_origin=entry["data_origin"],
+            reconciliation_tolerance_vnd=Decimal(entry["reconciliation_tolerance_vnd"]),
+        ))
+        baseline[entry["id"]] = FlatTextBaseline(path, top_k=3)
+    by_file = {file_id: [item for item in questions if item["file_id"] == file_id] for file_id in custom}
+    for file_id, cases in by_file.items():
+        for case in cases[:WARMUPS_PER_FILE]:
+            answer_question(custom[file_id], case["question"])
+            baseline[file_id].answer(case["question"])
+    predictions: dict[str, dict[str, dict]] = {"flat_text_baseline": {}, "evidence_api_core": {}}
+    timings: dict[str, list[float]] = {name: [] for name in predictions}
+    for repetition in range(REPEATS):
+        ordered = list(questions)
+        random.Random(SEED + repetition).shuffle(ordered)
+        pipeline_order = ("evidence_api_core", "flat_text_baseline") if repetition % 2 == 0 else ("flat_text_baseline", "evidence_api_core")
+        for name in pipeline_order:
+            for case in ordered:
+                started = perf_counter_ns()
+                if name == "evidence_api_core":
+                    prediction = answer_question(custom[case["file_id"]], case["question"]).model_dump(mode="json")
+                else:
+                    prediction = vars(baseline[case["file_id"]].answer(case["question"]))
+                timings[name].append((perf_counter_ns() - started) / 1_000_000)
+                if case["id"] not in predictions[name]:
+                    predictions[name][case["id"]] = prediction
+    metrics = {name: _score(questions, predictions[name], timings[name]) for name in predictions}
+    failures = []
+    for case in questions:
+        predicted = predictions["evidence_api_core"][case["id"]]
+        reasons = _failures(case["expected"], predicted)
+        if reasons:
+            failures.append({
+                "id": case["id"], "file_id": case["file_id"], "group": case["group"],
+                "question": case["question"], "reasons": reasons,
+                "expected": case["expected"],
+                "observed": {
+                    "status": predicted["status"], "value": predicted.get("value"),
+                    "unit": predicted.get("unit"), "period": predicted.get("period"),
+                    "report_scope": predicted.get("report_scope"),
+                    "verification_status": predicted.get("verification_status"),
+                    "evidences": _cells(predicted.get("evidences") or []),
+                    "answer": predicted.get("answer"),
+                },
+            })
+    report = {
+        "benchmark": "holdout_v1", "origin": "SYNTHETIC", "question_count": len(questions),
+        "created_utc": datetime.now(timezone.utc).isoformat(),
+        "protocol": {
+            "seed": SEED, "timed_repeats": REPEATS, "warmups_per_file": WARMUPS_PER_FILE,
+            "baseline_top_k": 3, "timing": "in-process query only; ingestion excluded; same question order per pass",
+            "numeric_denominator": "answerable gold questions; value and unit must both match",
+            "evidence_denominator": "gold cells on answerable questions; answered predictions only",
+            "refusal_precision_denominator": "all predicted refusals; correct gold status, verification status, and no numeric value required",
+            "trap_detection_denominator": "all gold refusals, including one reconciliation trap in the metric group",
+            "latency_note": "No network, LLM, embedding, HTTP, GPU, or model inference in timed path",
+        },
+        "environment": {
+            "python": sys.version.split()[0], "platform": platform.platform(),
+            "openpyxl": openpyxl.__version__, "pydantic": pydantic.__version__,
+            "fastapi": fastapi.__version__,
+        },
+        "files": manifest["files"],
+        "group_counts": dict(Counter(item["group"] for item in questions)),
+        "metrics": metrics,
+        "failure_cases": failures,
+        "per_question": [
+            {
+                "id": case["id"], "file_id": case["file_id"], "group": case["group"],
+                "expected_status": case["expected"]["status"],
+                "baseline_status": predictions["flat_text_baseline"][case["id"]]["status"],
+                "evidence_status": predictions["evidence_api_core"][case["id"]]["status"],
+                "baseline_failure_reasons": _failures(case["expected"], predictions["flat_text_baseline"][case["id"]]),
+                "evidence_failure_reasons": _failures(case["expected"], predictions["evidence_api_core"][case["id"]]),
+            }
+            for case in questions
+        ],
+    }
+    RESULTS_JSON.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    markdown = _markdown(report)
+    RESULTS_MD.write_text(markdown, encoding="utf-8")
+    return report
+
+
+if __name__ == "__main__":
+    result = run_benchmark()
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
+    print(_markdown(result))

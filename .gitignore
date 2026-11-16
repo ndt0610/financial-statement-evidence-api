@@ -1,0 +1,43 @@
+# Python and local environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv*/
+venv/
+.env
+.env.*
+!.env.example
+
+# Local OCR conversions, temporary uploads, source filings and indexes
+.cache/
+data/
+*.pdf
+*.xlsx
+*.xls
+*.index.json
+*.png
+*.jpg
+*.jpeg
+*.webp
+
+# Real-document labels and run outputs stay outside the shared baseline
+benchmarks/holdout_real_v1/
+benchmarks/dev_real_v2/
+benchmarks/m4b_real/*
+!benchmarks/m4b_real/manual_reference.py
+benchmarks/*.json
+benchmarks/*.md
+benchmarks/*.csv
+!benchmarks/m0_smoke_questions.json
+benchmarks/holdout_v1/*.json
+benchmarks/holdout_v1/*.csv
+
+# Local evidence packets and analyst transcriptions
+docs/pnj_precode/
+docs/*AUDIT_PACKET.md
+docs/LOCAL_RESULTS.md
+docs/*.json
