@@ -1,6 +1,12 @@
 # Financial Statement Evidence API
 
-An inspectable analysis workbench for Vietnamese financial statements. It turns spreadsheet and PDF inputs into versioned facts, keeps evidence linked to source cells or reviewed PDF locations, and runs deterministic calculations with explicit units and periods.
+A personal project: an inspectable analysis workbench for Vietnamese financial statements. It turns spreadsheet and PDF inputs into versioned facts, keeps evidence linked to source cells or reviewed PDF locations, and runs deterministic calculations with explicit units and periods.
+
+## Preview: truy nguyên một chỉ số về tài liệu nguồn
+
+![Drawer bằng chứng cho doanh thu thuần năm 2024: giá trị, trạng thái xác minh, mã đầu vào và ô B02-DN E9 được hiển thị cạnh nhau.](docs/images/financial-evidence-source-trace.png)
+
+*Ảnh dùng workbook tổng hợp do dự án tạo để minh họa khả năng lần từ kết quả về ô nguồn; số liệu không thuộc doanh nghiệp thật.*
 
 ## Why this project
 
