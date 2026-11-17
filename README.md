@@ -60,16 +60,20 @@ A small real-document pilot is described in docs/M4B_REAL_PILOT.md: two public s
 ## Run locally
 
     python -m pip install -r requirements-m2.txt
-    python -m pytest tests -q
     uvicorn app.api.main:app --reload
 
 Open http://127.0.0.1:8000/analysis for the analysis workbench and /audit for PDF review. API contracts and example requests are in docs/M2_API.md.
 
-To build the synthetic four-statement health-review fixture:
+You can upload your own XLSX or PDF from the workbench. The health-review example and its synthetic figures are described in:
 
-    python -m scripts.build_m4_fixture
+- [Health-review workflow](docs/M4_HEALTH_REVIEW.md)
+- [Tender criteria prototype](docs/M5_TENDER_REVIEW.md)
 
-See docs/M4_HEALTH_REVIEW.md for the health-review workflow and docs/M5_TENDER_REVIEW.md for the criteria prototype.
+The focused UI formatting check currently available in this public checkout is:
+
+    python -m pytest tests/test_ui_presentation.py -q
+
+The broader historical test suite is **not a clean-checkout pass yet**: some tests expect local source manifests, benchmark files, and script modules that are not included in this public repository. I ran the full suite while preparing this portfolio; collection stopped on those missing files before the affected tests could execute.
 
 ## Structure
 
