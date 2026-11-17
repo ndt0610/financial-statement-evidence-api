@@ -1,18 +1,35 @@
 # Financial Statement Evidence API
 
-A personal project: an inspectable analysis workbench for Vietnamese financial statements. It turns spreadsheet and PDF inputs into versioned facts, keeps evidence linked to source cells or reviewed PDF locations, and runs deterministic calculations with explicit units and periods.
+**Từ báo cáo tài chính gốc đến nhận định có thể kiểm tra.** Đây là dự án cá nhân xây một bàn phân tích BCTC tiếng Việt: nạp Excel/PDF, chuẩn hóa số liệu theo công ty–kỳ–đơn vị, tính và so sánh chỉ tiêu, phát hiện điểm cần rà soát, rồi cho người xem mở lại công thức và vị trí nguồn của từng con số.
 
-## Preview: truy nguyên một chỉ số về tài liệu nguồn
+### Một tình huống phân tích trong bộ dữ liệu minh họa
 
-![Drawer bằng chứng cho doanh thu thuần năm 2024: giá trị, trạng thái xác minh, mã đầu vào và ô B02-DN E9 được hiển thị cạnh nhau.](docs/images/financial-evidence-source-trace.png)
+Workbook FY2025 tổng hợp có **lợi nhuận sau thuế +65 triệu đồng** nhưng **dòng tiền kinh doanh −80 triệu đồng**. Hệ thống không chỉ in hai số: nó tạo tín hiệu *lợi nhuận dương trong khi tiền từ hoạt động kinh doanh âm* để người phân tích kiểm tra. Cùng báo cáo đó, phải thu khách hàng tăng khoảng **116,67%**, nhanh hơn doanh thu **30%**; đây là tín hiệu rà soát thứ hai. Tài sản ngắn hạn **500 triệu** và nợ ngắn hạn **300 triệu** cho vốn lưu động ròng **200 triệu đồng**.
 
-*Ảnh dùng workbook tổng hợp do dự án tạo để minh họa khả năng lần từ kết quả về ô nguồn; số liệu không thuộc doanh nghiệp thật.*
+Những con số trên là **fixture tự tạo**, không phải kết luận về doanh nghiệp thật. Tín hiệu chỉ nêu chênh lệch cần xem tiếp; nó không suy ra gian lận, khả năng trả nợ hay khuyến nghị đầu tư. [Xem dữ liệu và phép tính của tình huống](docs/M4_HEALTH_REVIEW.md).
 
-## Why this project
+## Người xem làm được gì?
 
-Financial answers are easier to trust when the reader can trace each value. This project combines statement ingestion, validation, financial calculations, and human review instead of returning a number without its source.
+1. **Nạp và chọn đúng báo cáo.** Excel được đọc cùng ô nguồn; PDF được trích xuất theo trang và đưa giá trị chưa xác nhận vào hàng đợi hậu kiểm. Bộ lọc giữ riêng công ty, năm tài chính, báo cáo riêng/hợp nhất và đơn vị tiền.
+2. **Đọc kết quả nhiều kỳ.** Giao diện tổ chức tổng quan, ma trận 52 chỉ tiêu, phân rã ROE DuPont và bốn cầu nối biến động: lợi nhuận, dòng tiền kinh doanh, nguồn tài trợ, tiền. Chỉ tiêu thiếu đầu vào hoặc chỉ là proxy được đánh trạng thái riêng thay vì hiển thị như một giá trị chắc chắn.
+3. **Kiểm tra đường đi của một nhận định.** Bấm vào một chỉ tiêu để xem giá trị, công thức, kỳ, đơn vị, mức xác minh và ô Excel hoặc trang PDF liên quan. Các phép tính dùng `Decimal` và giữ danh sách dữ kiện đầu vào.
+4. **Rà soát trước khi kết luận.** Hệ thống nêu xung đột/thiếu chứng cứ và có thể từ chối câu trả lời số khi đầu vào chưa đủ tin cậy. Nhánh đối chiếu tiêu chí tài chính nhà thầu dùng ngưỡng do người dùng cung cấp, trả từng tiêu chí kèm bằng chứng; nó không tự ra quyết định chọn nhà thầu.
 
-## Main workflow
+## Xem phân tích, rồi lần về chứng cứ
+
+![Góc nhìn ngân hàng và tín dụng trên dashboard phân tích đa kỳ: vốn lưu động ròng, tài sản ngắn hạn, nợ ngắn hạn, hàng tồn kho, tiền và tỷ lệ nợ phải trả.](docs/images/financial-bank-analysis.jpg)
+
+*Góc nhìn Ngân hàng / Tín dụng trên bộ dữ liệu minh họa 2024–2025. Dashboard đặt vốn lưu động, cơ cấu tài sản và nghĩa vụ ngắn hạn cạnh nhau để người xem nhận ra câu hỏi cần kiểm tra tiếp; số liệu trong ảnh là dữ liệu mẫu, không đại diện cho doanh nghiệp thật.*
+
+![Ngăn công thức và nguồn của vốn lưu động ròng: công thức B01:100−B01:310, trạng thái đã xác minh và hai ô nguồn trong báo cáo.](docs/images/financial-working-capital-evidence.jpg)
+
+*Mở một chỉ tiêu để xem giá trị, công thức và các ô Excel đã đóng góp vào phép tính. Ví dụ trong ảnh là dữ liệu tổng hợp; “đã xác minh” mô tả kiểm tra trong prototype, không phải xác nhận độc lập báo cáo của một doanh nghiệp.*
+
+## Vì sao làm dự án này?
+
+Một dashboard đẹp vẫn khó dùng cho phân tích nếu không biết số đến từ tài liệu, kỳ và đơn vị nào. Dự án nối **nạp báo cáo → tính toán → tín hiệu rà soát → bằng chứng nguồn** trong cùng luồng, để người dùng có thể kiểm tra và phản biện kết quả.
+
+## Luồng xử lý
 
 ~~~mermaid
 flowchart LR
