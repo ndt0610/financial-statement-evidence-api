@@ -2,6 +2,10 @@
 
 **Từ báo cáo tài chính gốc đến nhận định có thể kiểm tra.** Đây là dự án cá nhân xây một bàn phân tích BCTC tiếng Việt: nạp Excel/PDF, chuẩn hóa số liệu theo công ty–kỳ–đơn vị, tính và so sánh chỉ tiêu, phát hiện điểm cần rà soát, rồi cho người xem mở lại công thức và vị trí nguồn của từng con số.
 
+![Góc nhìn ngân hàng và tín dụng trên dashboard phân tích đa kỳ: vốn lưu động ròng, tài sản ngắn hạn, nợ ngắn hạn, hàng tồn kho, tiền và tỷ lệ nợ phải trả.](docs/images/financial-bank-analysis.jpg)
+
+*Góc nhìn Ngân hàng / Tín dụng trên bộ dữ liệu minh họa 2024–2025. Dashboard đặt vốn lưu động, cơ cấu tài sản và nghĩa vụ ngắn hạn cạnh nhau để người xem nhận ra câu hỏi cần kiểm tra tiếp; số liệu trong ảnh là dữ liệu mẫu, không đại diện cho doanh nghiệp thật.*
+
 ### Một tình huống phân tích trong bộ dữ liệu minh họa
 
 Workbook FY2025 tổng hợp có **lợi nhuận sau thuế +65 triệu đồng** nhưng **dòng tiền kinh doanh −80 triệu đồng**. Hệ thống không chỉ in hai số: nó tạo tín hiệu *lợi nhuận dương trong khi tiền từ hoạt động kinh doanh âm* để người phân tích kiểm tra. Cùng báo cáo đó, phải thu khách hàng tăng khoảng **116,67%**, nhanh hơn doanh thu **30%**; đây là tín hiệu rà soát thứ hai. Tài sản ngắn hạn **500 triệu** và nợ ngắn hạn **300 triệu** cho vốn lưu động ròng **200 triệu đồng**.
@@ -16,10 +20,6 @@ Những con số trên là **fixture tự tạo**, không phải kết luận v�
 4. **Rà soát trước khi kết luận.** Hệ thống nêu xung đột/thiếu chứng cứ và có thể từ chối câu trả lời số khi đầu vào chưa đủ tin cậy. Nhánh đối chiếu tiêu chí tài chính nhà thầu dùng ngưỡng do người dùng cung cấp, trả từng tiêu chí kèm bằng chứng; nó không tự ra quyết định chọn nhà thầu.
 
 ## Xem phân tích, rồi lần về chứng cứ
-
-![Góc nhìn ngân hàng và tín dụng trên dashboard phân tích đa kỳ: vốn lưu động ròng, tài sản ngắn hạn, nợ ngắn hạn, hàng tồn kho, tiền và tỷ lệ nợ phải trả.](docs/images/financial-bank-analysis.jpg)
-
-*Góc nhìn Ngân hàng / Tín dụng trên bộ dữ liệu minh họa 2024–2025. Dashboard đặt vốn lưu động, cơ cấu tài sản và nghĩa vụ ngắn hạn cạnh nhau để người xem nhận ra câu hỏi cần kiểm tra tiếp; số liệu trong ảnh là dữ liệu mẫu, không đại diện cho doanh nghiệp thật.*
 
 ![Ngăn công thức và nguồn của vốn lưu động ròng: công thức B01:100−B01:310, trạng thái đã xác minh và hai ô nguồn trong báo cáo.](docs/images/financial-working-capital-evidence.jpg)
 
